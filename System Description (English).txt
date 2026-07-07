@@ -1,0 +1,41 @@
+Architectural Overview of the Dynamic Cell-Based System
+
+1. Cell-Based Architecture over Nodes
+This system utilizes the concept of a 'Cell' instead of a traditional 'Node'. A single cell connects to a CellConn_t structure. Each CellConn_t structure contains 256 weights, and it can be dynamically expanded by adding more structures in increments of 256 as needed. This structural design is highly flexible and can be modified later (e.g., reducing the count per structure or converting it into a class).
+Most importantly, unlike the traditional NxN block layer format where all nodes are pre-connected for all possible cases, individual cells in this system only hold the necessary amount of weights and connect directly only with contextually relevant cells.
+
+2. Fixed-Point Arithmetic and Memory Mapping
+All computations strictly use fixed-point arithmetic (default 32+32 format, with 8+8, 16+16, and up to 64+64 available). Both the cell energy levels and weight inputs utilize this 32+32 fixed-point system.
+Furthermore, all cells and CellConn_t modules utilize mmap() virtual memory, linking them directly to files stored on an SSD for persistent and highly efficient access.
+
+3. Dynamic Linking for Learning
+When learning associations like 'A is B', the system links Cell A and Cell B based on their correlation. If a new correlation like 'A is C' emerges, it simply adds meaning Cell C to Cell A's connections.
+If learning 'trends' or 'tendencies' is required, the system can utilize traditional NxN or NxNxN connections. In such cases, weights are randomly initialized, inputs are fed, and weights are tuned to achieve the desired output. However, a strict post-learning validation step is applied: the block's inputs undergo comprehensive toggle testing, and any node that is never activated is permanently removed and its memory recycled.
+
+4. Thresholds, Negative Values, and the Removal of Activation Functions
+As defined in the Cell_t structure, the system supports both positive (+) and negative (-) threshold settings. Cells can be configured to fire based on negative levels, not just positive inputs.
+Negative values are actively recognized and managed as meaningful data. For instance, if an input of 1 strengthens a weight by +0.001, and an input of 0 strengthens it by -0.001, prolonged learning could result in a weight of -128. In this state, an input of 1 applies a value of 1, and an input of 0 applies a value of -1, producing distinct logical outcomes. 
+Because of this dynamic, situation-based thresholding, the system completely removes the need for traditional activation functions. If the energy level is contextually valid—even if it approaches absolute zero—the threshold adjusts accordingly to trigger or suppress the firing.
+
+5. Execution Code Unit (ECU) for Procedural Processing
+To overcome the limitation of traditional AIs that excel at inference but fail at procedural, multi-step tasks, the system introduces the 'Execution Code Unit'. It acts like a virtual CPU, executing commands similarly to Unix shell scripts. A basic command size of 32*4 (defined as EXECUTION_BUFFER_SIZE) is allocated to each ECU, mapped via mmap().
+If a cell's bool Execution flag is set to true, the code registered in its ECU is executed when the cell fires.
+The ECU allows the system to use other cells as variables, call subroutines in other cells' ECUs, and manage its own learning and inference. When exact calculation is needed, the ECU bypasses neural inference and directly calls a mathematical library to perform high-precision (64+64 fixed-point) calculations, including exponential or logarithmic operations.
+ECU code blocks are strictly standardized like LEGO pieces to prevent system harm. While initially user-programmed, the system will eventually generate its own C-style code to meet user demands once sufficiently trained. Users can also write scripts, save them as files, and execute them via commands, significantly streamlining the learning process.
+
+6. Natural Language Processing Strategy
+- Token Cells: A simplified version of Cell_t. It receives text, splits it into UTF-8 bits, and learns them. During inference, if a learned token cell reacts to user input, its output stimulates the 'Meaning Cells'.
+- Meaning Cells: These handle raw semantic concepts. Initially, learning happens word-by-word. As meaning cells recognize fixed sentence patterns (e.g., "Chulsoo eats an apple"), the ECU trains the Token cells on entire patterns. Weights for subjects and objects are minimized, while verbs and particles are heavily weighted, allowing the system to recognize structural logic (e.g., "Pattern113, Chulsoo, Apple").
+- Sentence Generation: Activated meaning cells pass their associative data to the sentence generation area. The system determines what to say and how to phrase it based on learned grammatical rules. It gathers all relevant data and passes it to the ECU, which converts the logic into a final text string and outputs it.
+
+7. Memory Management Strategy: "Forgetting is Intelligence"
+A core philosophy is that infinite retention is unnecessary. All cell thresholds are dynamically applied based on their learned levels.
+When first created, a cell has a weak weight. With reinforcement learning or repeated inference calls, the weight strengthens, simultaneously increasing its activation threshold. Conversely, if a cell remains unused over multiple system logins, its weight gradually degrades. Once the weight reaches 0, the cell is deleted and its space is recycled.
+
+8. Context Window and Memory Segmentation
+The system abandons massive context windows (even 1K tokens may be unnecessary). During interactions, the system focuses purely on the core topic and highly significant points. Tangential content is naturally overwritten. If a topic changes persistently, the system maintains the core elements of the new topic while shifting focus.
+Memory is distinctly segmented. Noteworthy conversational elements enter Short-Term Memory. Once fully validated and their associative weights maximized, they transition permanently into Long-Term Memory.
+
+9. Top-Down Development Approach
+Given its scale, the project strictly uses a top-down, highly modularized coding approach. main.cpp only exposes top-level classes, which progressively subdivide into modular sub-classes.
+To manage cognitive load (the developer's "context window"), top-level modules are first defined purely by their interfaces (data structures and arguments) to ensure successful builds even if the internal logic is yet undetermined. Detailed logic is implemented progressively as development moves deeper into the sub-modules.
