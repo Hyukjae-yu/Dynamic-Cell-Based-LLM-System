@@ -1,0 +1,169 @@
+================================================================================
+vShell 스크립트 명령어 및 연산 규격 명세서 (vShell Command Specification)
+================================================================================
+
+1. 셀(Cell) 상태 및 속성 제어 명령어
+--------------------------------------------------------------------------------
+* create <alias>
+  - 기능: 새로운 의미셀을 동적으로 생성하고 고유 고정 고유 ID와 이름(Alias)을 매핑합니다.
+  - 내부 호출: SemanticEngine::getOrCreateNode()
+
+* delete <alias>
+  - 기능: 지정된 의미셀의 활성화 플래그, 에너지, Threshold를 초기화하고 가비지 컬렉팅 대상으로 분류합니다.
+
+* <alias>.energy = <value>
+  - 기능: 셀의 현재 에너지 레벨을 고정소수점 형태로 직접 대입하거나 변경합니다.
+  - 연산자 지원: 대입(=), 증감(+=, -=), 곱셈(*=), 나눗셈(/=)
+  - 내부 호출: pool[id].setEnergy(), addEnergy(), subEnergy()
+
+* <alias>.Pth = <value>
+  - 기능: 양수 입력에 반응하여 발화(Firing)하는 기준인 양수 스레시홀드 레벨을 설정합니다.
+  - 내부 호출: pool[id].setPThreshold()
+
+* <alias>.Nth = <value>
+  - 기능: 부정 레벨 또는 음수 자극에 의해 발화하도록 설정하는 음수 스레시홀드 레벨을 지정합니다.
+  - 내부 호출: pool[id].setNThreshold()
+
+* <alias>.exec = true/false
+  - 기능: 해당 셀이 발화 조건에 도달했을 때 연동된 vCPU 실행코드 유닛(Execution Code Unit)을 작동시킬지 플래그를 제어합니다.
+  - 내부 호출: pool[id].setExecFlag()
+
+* <alias>.active = true/false
+  - 기능: 스레시홀드 조건과 관계없이 시스템 강제로 셀의 활성화(발화) 상태 비트를 On/Off 합니다.
+  - 내부 호출: pool[id].setActive()
+
+
+2. 시냅스(연결망) 제어 및 논리 관계 정의
+--------------------------------------------------------------------------------
+* <aliasA>.(<aliasB>) = <weight>
+  - 기능: 소스 셀(A)에서 타겟 셀(B)로 향하는 시냅스의 가중치(Weight)를 고정소수점 단위로 직접 설정하거나 조작합니다.
+  - 연산자 지원: 대입(=), 증감(+=, -=)
+  - 내부 호출: pool[sID].addConnection(), connPool[chunk].setWeight()
+
+* link_fact <subject> <object> [weight]
+  - 기능: "주어(A)는 목적어(B)다" 식의 고정된 사실적 논리 관계를 FUNC_FACT_RELATION 식별 코드로 직접 바인딩합니다.
+  - 내부 호출: SemanticEngine::linkFactRelation()
+
+* unlink <aliasA> <aliasB>
+  - 기능: 두 셀(A와 B) 사이에 형성되어 있는 직접적인 시냅스 연결 청크 및 가중치 데이터를 완벽히 분리 및 파괴합니다.
+  - 내부 호출: pool[sID].removeConnection()
+
+* decay_links <alias> <rate>
+  - 기능: 특정 셀에 엮여 있는 모든 시냅스 가중치를 지정된 비율만큼 일괄 감쇠시켜 시스템적인 망각 흐름을 유도합니다.
+
+
+3. 네트워크 추론 및 에너지 전파 제어
+--------------------------------------------------------------------------------
+* propagate [steps]
+  - 기능: 현재 에너지 레벨이 활성화된 모든 소스 셀들로부터 연결된 타겟 셀들 방향으로 시냅스 가중치를 곱해 에너지를 순방향 전파(Forward Pass)시킵니다. steps 인수를 주어 연쇄 확산 깊이를 통제합니다.
+
+* reset_energy all
+  - 기능: 이전 연산이나 추론 과정에서 잔류한 모든 의미셀의 에너지 레벨을 {0, 0}으로 일괄 청소하여 다음 추론 사이클을 준비합니다.
+  - 내부 호출: SemanticEngine::resetNetworkEnergy()
+
+* fire <alias>
+  - 기능: 특정 의미셀에 1.0 상태의 강한 자극 에너지를 주입하여 즉각적인 발화를 일으키고 연쇄 전파를 촉발합니다.
+  - 내부 호출: BrainNetworkEngine::fireCellByAlias()
+
+* print_fired
+  - 기능: 현재 각자의 스레시홀드(Pth, Nth) 한계선을 넘어 완벽히 발화(Firing) 상태에 도달한 모든 노드의 ID, 이름, 에너지 레벨 스냅샷을 터미널에 출력합니다.
+  - 내부 호출: SemanticEngine::printFiredNodes()
+
+
+4. 인지계(Token) 및 초성 체인 제어
+--------------------------------------------------------------------------------
+* train_token "<word>" [epochs]
+  - 기능: 입력된 단어 문자열을 UTF-8 규격의 비트 단위 패턴으로 쪼개어 가상 메모리 내의 토큰셀에 반복 학습시킵니다.
+  - 내부 호출: tCell::trainPattern()
+
+* scan_tokens "<sentence>"
+  - 기능: 입력 문장이 들어오면 어절별 초성을 유도해 임시 내비게이션 버퍼를 구축한 뒤, 매칭되는 초성 링크드 체인만을 고속 순회하며 일치하는 토큰셀을 발화시킵니다.
+  - 내부 호출: TokenPerceptionEngine::scanActiveChosungChains()
+
+* link_token <word> to <alias>
+  - 기능: 텍스트 인지를 통해 발화된 특정 토큰셀의 출력이 고차원 의미셀(Node)을 자극하여 활성화시키도록 시냅스 타겟을 물리적으로 엮어줍니다.
+  - 내부 호출: tCell::addTarget()
+
+* auto_threshold_token <word> [ratio]
+  - 기능: 특정 단어가 가질 수 있는 비트 형태적 최대 에너지를 측정한 뒤, 입력된 비율(기본 0.95)을 곱해 오차 방어용 토큰 인식 스레시홀드를 자동 튜닝합니다.
+  - 내부 호출: tCell::autoSetThreshold()
+
+
+5. 블록 레이어(NxNxN) 자동 학습망 관리
+--------------------------------------------------------------------------------
+* build_block base <id> layers <L1,L2,L3...>
+  - 기능: 지정된 가상 메모리 시작 ID 번지부터 명시된 레이어별 구조(예: 8,64,64,8)를 갖는 고전적 댄스(Dense) 신경망 추세 학습용 블록을 사전 레이아웃 빌드합니다.
+  - 내부 호출: BrainNetworkEngine::buildDenseNetwork()
+
+* auto_train base <id> data <file.csv> epochs <n> lr <r>
+  - 기능: 지정된 밀집망 블록에 정형 데이터 풀을 투입하여 에너지를 전파하고, 역전파 알고리즘을 가동하여 목표 오차 한계치까지 시냅스 가중치를 정밀 자동 튜닝합니다.
+  - 내부 호출: BrainNetworkEngine::autoTrainBlockLayer()
+
+* save_weights base <id> to <file.learn>
+  - 기능: 학습이 성공적으로 완료된 블록 레이어의 고정소수점 가중치 데이터만 8바이트 단위로 순수 추출하여 롬팩(Cartridge) 형태의 독립 파일로 영구 저장합니다.
+  - 내부 호출: BrainNetworkEngine::saveBlockWeights()
+
+* load_weights base <id> from <file.learn>
+  - 기능: 독립된 외부 파일에 저장되어 있던 가중치 바이너리 팩을 가상 메모리 내 지정 블록 레이어 시냅스 매핑 구조에 정확히 역주입합니다.
+  - 내부 호출: BrainNetworkEngine::loadBlockWeights()
+
+* prune_block base <id>
+  - 기능: 블록 레이어 내의 모든 입출력 경우의 수를 토글 테스트하고, 실행 과정에서 단 한 번도 활성화(발화)되지 않은 무의미한 데드 노드들을 제거하여 자원을 재활용 풀로 반환합니다.
+
+
+6. vCPU 실행 유닛 및 절차적 제어문 (Shell Script 코어)
+--------------------------------------------------------------------------------
+* 조건 분기 제어 (if - elif - else - fi)
+  - 규격:
+    if <표현식>, then
+        <수행할 명령어 및 연산>
+    elif <표현식>, then
+        <수행할 명령어 및 연산>
+    else
+        <수행할 명령어 및 연산>
+    fi
+  - 예시:
+    if 철수.용돈 < 영희.용돈, then
+        철수.(용돈) += 0.01
+    fi
+  - 시맨틱 해독: 
+    객체.속성 (A.B) 형태로 호출 시 해당 셀에 연결된 목적지 셀의 순수 에너지 레벨을 참조하며,
+    객체.(시냅스) (A.(B)) 구조로 호출 시 두 셀 사이에 직접 형성된 연결 가중치 값에 물리적으로 접근합니다.
+
+* 루프 반복 제어 (while - do - done / for - in - do - done)
+  - 규격:
+    while <표현식>, do
+        <반복 수행할 명령어>
+    done
+  - 예시:
+    while 사과.energy < 1.0, do
+        propagate 1
+        사과.energy += 0.05
+    done
+
+* bind_script <alias> <filename.vsh>
+  - 기능: 가상 CPU 가동의 핵심으로, 특정 의미셀이 발화했을 때 절차적으로 연속 처리되어야 할 스크립트 파일 내용을 32비트 기본 명령어 세트 및 확장 블록 인프라에 바인딩합니다.
+  - 내부 호출: VirtualExecutionEngine::bindScriptToCell()
+
+* trigger_vcpu
+  - 기능: 시스템 전체 등록된 인터럽트 레지스트리를 일괄 스캔하여, 발화 상태 조건을 충족하고 execFlag가 켜진 모든 셀의 내장/외장 vCPU 가상 명령 체인을 연속 순차 실행(Interrupt Trigger)합니다.
+  - 내부 호출: VirtualExecutionEngine::scanAndTriggerScripts()
+
+
+7. 시스템 관리 및 수학 연산 기능
+--------------------------------------------------------------------------------
+* math <var> = <expression>
+  - 기능: 추론 시스템과 별개로 단순 절차 계산 및 고정밀 수학 처리가 필요할 때 가상 프로세서가 CellMath 라이브러리를 직접 호출하여 64비트/128비트 정밀도로 지수, 로그, 삼각함수 단순 연산을 수행합니다.
+  - 예시: math 가중치버퍼 = sin(사과.energy) * 0.125
+  - 내부 호출: CellMath::fixed64_sin(), fixed64_cos(), f128_ln() 등
+
+* sync
+  - 기능: mmap 가상 메모리 공간 위에서 변경 및 갱신된 모든 셀 구조체와 시냅스 연결 행렬 데이터를 실제 물리 저장 장치(SSD) 내의 시스템 파일로 즉시 강제 플러시 동기화합니다.
+  - 내부 호출: MmapStorageManager::syncToDisk()
+
+* echo "<message>"
+  - 기능: 쉘 스크립트 자동화 연산 과정 중에서 현재 특정 셀의 상태값, 에너지 수치 또는 진행 상황 메시지를 터미널 화면에 명확히 출력합니다.
+
+* wait <ms>
+  - 기능: 연쇄적인 노드 Firing 타이밍을 시뮬레이션하거나 절차적 제어 동기화를 위해 지정된 밀리초(ms) 타임아웃만큼 스크립트 실행 스레드를 대기 상태로 유지합니다.
+================================================================================
